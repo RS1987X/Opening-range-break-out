@@ -15,7 +15,7 @@ from datetime import date
 from datetime import datetime
 from dateutil import parser
 
-evo_data = pd.read_csv('OMXSTO_DLY_AEGIR, 15.csv')
+evo_data = pd.read_csv('OMXSTO_DLY_SHOT, 15.csv')
 evo_data = evo_data['time;open;high;low;close;VWAP;Upper Band;Lower Band;Volume;Volume MA'].str.split(";",expand=True)
 evo_data = evo_data.rename(columns={0:"DateTime", 1:"Open", 2:"High", 3:"Low", 4:"Close", 5:"VWAP", 6:"Upper Band", 7:"Lower Band", 8:"Volume", 9:"Volume MA"})
 evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume"]]
@@ -81,7 +81,7 @@ opening_gap = open_price["Open"]/exit_price["Close"].shift(1)-1
 
 #long position logic
 dh_above_opening_high = (dh > opening_rng_high)
-low_opening_rng_volume = (opening_rng_volume["Volume"].astype(int) < (1*150000)).to_frame()
+low_opening_rng_volume = (opening_rng_volume["Volume"].astype(int) < (4*150000)).to_frame()
 
 #short position logic
 #dl_below_opening_low = (dh > opening_rng_high)

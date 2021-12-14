@@ -15,7 +15,7 @@ from datetime import date
 from datetime import datetime
 from dateutil import parser
 
-evo_data = pd.read_csv('OMXSTO_DLY_SINCH, 15.csv')
+evo_data = pd.read_csv('OMXSTO_DLY_AEGIR, 15.csv')
 evo_data = evo_data['time;open;high;low;close;VWAP;Upper Band;Lower Band;Volume;Volume MA'].str.split(";",expand=True)
 evo_data = evo_data.rename(columns={0:"DateTime", 1:"Open", 2:"High", 3:"Low", 4:"Close", 5:"VWAP", 6:"Upper Band", 7:"Lower Band", 8:"Volume", 9:"Volume MA"})
 evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume"]]
@@ -104,8 +104,8 @@ exit_price = exit_price[pos_ind].astype(float)
 
 #calculate reutrns
 comm = 0.0002
-slippage = 0.5/100
-strat_returns = exit_price["Close"]/entry_price["High"]-1-comm*2
+slippage = 0.1/100
+strat_returns = exit_price["Close"]/entry_price["High"]-1-comm*2-slippage
 
 
 
@@ -122,6 +122,7 @@ print("Percent profitable " + str(percent_profitable))
 cum_ret =(1 + strat_returns).cumprod()
 total_return = cum_ret.tail(1)-1
 print("Total return " + str(total_return[0]))
+print("Number of trades " + str(len(strat_returns)))
 #print("   ")
 #print('Opening range break out')
 #mean_ret = cum_ret.tail(1)**(1/7)-1

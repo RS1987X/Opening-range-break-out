@@ -16,7 +16,7 @@ from datetime import datetime
 from dateutil import parser
 from statsmodels.graphics.tsaplots import plot_acf
 
-evo_data = pd.read_csv('OMXSTO_DLY_EVO, 15.csv')
+evo_data = pd.read_csv('OMXSTO_DLY_SYSR, 15.csv')
 evo_data = evo_data['time;open;high;low;close;VWAP;Upper Band;Lower Band;Volume;Volume MA'].str.split(";",expand=True)
 evo_data = evo_data.rename(columns={0:"DateTime", 1:"Open", 2:"High", 3:"Low", 4:"Close", 5:"VWAP", 6:"Upper Band", 7:"Lower Band", 8:"Volume", 9:"Volume MA"})
 evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume"]]
@@ -88,13 +88,11 @@ opening_rng_volume = opening_rng_volume.set_index("DatePart")
 #calculate rolling 20 session opening range volume
 avg_rolling_opening_volume = opening_rng_volume.rolling(20).mean().shift(1)
 
-
 #OPENING GAP 
 open_price = evo_data[evo_data["TimePart"] == "09:00:00"]["Open"].to_frame().astype(float)
 open_price.insert(1,"DatePart",only_date_part)
 open_price = open_price.set_index("DatePart")
 opening_gap = open_price["Open"]/exit_price["Close"].shift(1)-1
-
 
 #long position logic
 dh_above_opening_high = (dh > opening_rng_high)

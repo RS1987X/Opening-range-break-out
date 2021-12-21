@@ -14,12 +14,12 @@ from scipy import stats
 from datetime import date
 from datetime import datetime
 from dateutil import parser
+from statsmodels.graphics.tsaplots import plot_acf
 
-evo_data = pd.read_csv('OMXSTO_DLY_VOLCAR_B, 15.csv')
+evo_data = pd.read_csv('OMXSTO_DLY_STOR_B, 15.csv')
 evo_data = evo_data['time;open;high;low;close;VWAP;Upper Band;Lower Band;Volume;Volume MA'].str.split(";",expand=True)
 evo_data = evo_data.rename(columns={0:"DateTime", 1:"Open", 2:"High", 3:"Low", 4:"Close", 5:"VWAP", 6:"Upper Band", 7:"Lower Band", 8:"Volume", 9:"Volume MA"})
 evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume"]]
-
 
 
 time_offset_removed =  evo_data["DateTime"].str[:-6]
@@ -27,10 +27,12 @@ only_date_part = evo_data["DateTime"].str[:-15]
 only_time_part = time_offset_removed.str[11:]
 
 evo_data.insert(1,"DatePart", only_date_part) 
-evo_data.insert(2,"TimePart", only_time_part) 
+evo_data.insert(2,"TimePart", only_time_part)
 
 
-
+#DAY HIGH and DAY LOWS
+dh = evo_data.groupby('DatePart')["High"].max().to_frame()
+dl = evo_data.groupby('DatePart')["Low"].min().to_frame()
 
 #Closing prices for the trading session, full and half session
 full_day_dates = evo_data[evo_data["TimePart"] == "17:15:00"]["DatePart"].to_frame()
@@ -41,10 +43,6 @@ half_days_data = evo_data[evo_data["DatePart"].isin(half_day_dates["DatePart"])]
 half_days_data["TimePart"] == "12:45:00"
 
 
-#DAY HIGH and DAY LOWS
-dh = evo_data.groupby('DatePart')["High"].max().to_frame()
-dl = evo_data.groupby('DatePart')["Low"].min().to_frame()
-
 #EXIT PRICES for both half and full sessions
 exit_price_half_day = half_days_data[half_days_data["TimePart"] == "12:45:00"]["Close"]
 exit_price_full_days = evo_data[evo_data["TimePart"] == "17:15:00"]["Close"]
@@ -54,6 +52,21 @@ exit_price = exit_price.sort_index()
 exit_price = exit_price.to_frame().astype(float)
 exit_price.insert(1,"DatePart",only_date_part)
 exit_price = exit_price.set_index("DatePart")
+
+
+
+#calculate realized variance using 680 (15 min) observations, roughly 20 trading sessions
+returns = evo_data["Close"].astype(float).pct_change()**2
+realized_volatility = np.sqrt(returns.rolling(680).sum().astype(float)).to_frame()
+
+#realized_volatility.insert(1,"TimePart",only_time_part)
+#realized_volatility.insert(2,"DatePart", only_date_part)
+#realized_volatility = realized_volatility.set_index("TimePart")
+#realized_volatility_daily = realized_volatility[realized_volatility.index == "17:15:00"]
+
+#avg_realized_vol = realized_volatility.rolling(680).mean().shift(1).to_frame()
+#avg_realized_vol.insert(1,"DatePart",only_date_part)
+#avg_realized_vol = avg_realized_vol.set_index("DatePart")
 
 #OPENING RANGE
 opening_rng_high = evo_data[evo_data["TimePart"] == "09:00:00"]["High"].to_frame()
@@ -72,57 +85,67 @@ opening_rng_volume = evo_data[evo_data["TimePart"] == "09:00:00"]["Volume"].to_f
 opening_rng_volume.insert(1,"DatePart",only_date_part)
 opening_rng_volume = opening_rng_volume.set_index("DatePart")
 
+#calculate rolling 20 session opening range volume
+avg_rolling_opening_volume = opening_rng_volume.rolling(20).mean().shift(1)
+
 #OPENING GAP 
 open_price = evo_data[evo_data["TimePart"] == "09:00:00"]["Open"].to_frame().astype(float)
 open_price.insert(1,"DatePart",only_date_part)
 open_price = open_price.set_index("DatePart")
 opening_gap = open_price["Open"]/exit_price["Close"].shift(1)-1
 
-
 #long position logic
 dh_above_opening_high = (dh > opening_rng_high)
-low_opening_rng_volume = (opening_rng_volume["Volume"].astype(int) < (7*150000)).to_frame()
+low_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) < avg_rolling_opening_volume["Volume"]).to_frame()
 
 #short position logic
-#dl_below_opening_low = (dh > opening_rng_high)
-#low_opening_rng_volume = (opening_rng_volume["Volume"].astype(int) > 300000).to_frame()
+dl_below_opening_low = (dl < opening_rng_low)
+high_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) > avg_rolling_opening_volume["Volume"]).to_frame()
 
 
-pos_ind = (dh_above_opening_high["High"])  & (low_opening_rng_volume["Volume"]) & (opening_gap >= 0.0)
-entry_price = opening_rng_high[pos_ind].astype(float)
+pos_ind = (dh_above_opening_high["High"]) & (low_opening_rng_volume["Volume"]) & (opening_gap > 0.0)
+short_pos_ind =  (dl_below_opening_low["Low"])  & (opening_gap < 0.0) & (high_opening_rng_volume["Volume"])
 
+long_entry_price = opening_rng_high[pos_ind].astype(float)
+short_entry_price = opening_rng_low[short_pos_ind].astype(float)
 
 #entry_price_no_nan = entry_price[~entry_price["High"].isnull()].astype(float)
 #exit_price_no_nan = exit_price[~entry_price["High"].isnull()].astype(float)
 
-
 #is stop loss hit?
 #exit_price[exit_price["Close"].astype(float) < opening_rng_low["Low"].astype(float)] =  opening_rng_low
 #TAKE OUT closing prices where we had an trade
-exit_price = exit_price[pos_ind].astype(float)
-
+long_exit_price = exit_price[pos_ind].astype(float)
+short_exit_price = exit_price[short_pos_ind].astype(float)
 
 #calculate reutrns
 comm = 0.0002
-slippage = 0.1/100
-strat_returns = exit_price["Close"]/entry_price["High"]-1-comm*2-slippage
+slippage = 0.15/100
+long_strat_returns = long_exit_price["Close"]/long_entry_price["High"]-1-comm*2-slippage
+short_strat_returns = short_entry_price["Low"]/short_exit_price["Close"]-1-comm*2-slippage
 
+long_short_returns = pd.concat([long_strat_returns, short_strat_returns],axis=0)
+long_short_returns = long_short_returns.sort_index()
 
+print("avg return " + str(long_short_returns.mean()))
+print("volatility " + str(long_short_returns.std()))
 
-print("avg return " + str(strat_returns.mean()))
-print("volatility " + str(strat_returns.std()))
-
-kelly_f = strat_returns.mean()/(strat_returns.std()**2)
+kelly_f = long_short_returns.mean()/(long_short_returns.std()**2)
 print("kelly f " + str(kelly_f))
-percent_profitable = (strat_returns > 0).sum()/len(strat_returns)
+percent_profitable = (long_short_returns > 0).sum()/len(long_short_returns)
 print("Percent profitable " + str(percent_profitable))
+
+#plot_acf(short_strat_returns)
+
 ############################################
 ##stats for basic strategy
 ###########################################
-cum_ret =(1 + strat_returns).cumprod()
+cum_ret =(1 + long_short_returns).cumprod()
 total_return = cum_ret.tail(1)-1
 print("Total return " + str(total_return[0]))
-print("Number of trades " + str(len(strat_returns)))
+print("Number of trades " + str(len(long_short_returns)))
+print("Average realized volatility " + str(realized_volatility.mean()))
+
 #print("   ")
 #print('Opening range break out')
 #mean_ret = cum_ret.tail(1)**(1/7)-1

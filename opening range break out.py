@@ -16,7 +16,7 @@ from datetime import datetime
 from dateutil import parser
 from statsmodels.graphics.tsaplots import plot_acf
 
-evo_data = pd.read_csv('OMXSTO_DLY_SYSR, 15.csv')
+evo_data = pd.read_csv('OMXSTO_DLY_ATCO_A, 15.csv')
 evo_data = evo_data['time;open;high;low;close;VWAP;Upper Band;Lower Band;Volume;Volume MA'].str.split(";",expand=True)
 evo_data = evo_data.rename(columns={0:"DateTime", 1:"Open", 2:"High", 3:"Low", 4:"Close", 5:"VWAP", 6:"Upper Band", 7:"Lower Band", 8:"Volume", 9:"Volume MA"})
 evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume"]]
@@ -94,17 +94,20 @@ open_price.insert(1,"DatePart",only_date_part)
 open_price = open_price.set_index("DatePart")
 opening_gap = open_price["Open"]/exit_price["Close"].shift(1)-1
 
+
+opening_rng_pct = (opening_rng_high["High"].astype(float) - opening_rng_low["Low"].astype(float))/(opening_rng_high["High"].astype(float) + opening_rng_low["Low"].astype(float)).mean()
+
 #long position logic
 dh_above_opening_high = (dh > opening_rng_high)
-low_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) < avg_rolling_opening_volume["Volume"]).to_frame()
+low_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) < 1*avg_rolling_opening_volume["Volume"]).to_frame()
 
 #short position logic
 dl_below_opening_low = (dl < opening_rng_low)
-high_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) > avg_rolling_opening_volume["Volume"]).to_frame()
+high_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) > 1.5*avg_rolling_opening_volume["Volume"]).to_frame()
 
 
-pos_ind = (dh_above_opening_high["High"]) & (low_opening_rng_volume["Volume"]) & (opening_gap > 0.0)
-short_pos_ind =  (dl_below_opening_low["Low"])  & (opening_gap < 0.0) & (high_opening_rng_volume["Volume"])
+pos_ind = (dh_above_opening_high["High"]) & (low_opening_rng_volume["Volume"]) & (opening_gap > 0.0) & (opening_rng_pct < 0.02)
+short_pos_ind =  (dl_below_opening_low["Low"]) & (high_opening_rng_volume["Volume"]) & (opening_rng_pct < 0.02) & (opening_gap < 0.0)
 
 long_entry_price = opening_rng_high[pos_ind].astype(float)
 short_entry_price = opening_rng_low[short_pos_ind].astype(float)
@@ -124,7 +127,7 @@ slippage = 0.15/100
 long_strat_returns = long_exit_price["Close"]/long_entry_price["High"]-1-comm*2-slippage
 short_strat_returns = short_entry_price["Low"]/short_exit_price["Close"]-1-comm*2-slippage
 
-long_short_returns = pd.concat([long_strat_returns, short_strat_returns],axis=0)
+long_short_returns =short_strat_returns  #pd.concat([long_strat_returns, short_strat_returns],axis=0) #
 long_short_returns = long_short_returns.sort_index()
 
 print("avg return " + str(long_short_returns.mean()))
@@ -144,6 +147,14 @@ cum_ret =(1 + long_short_returns).cumprod()
 total_return = cum_ret.tail(1)-1
 print("Total return " + str(total_return[0]))
 print("Number of trades " + str(len(long_short_returns)))
+
+
+long_kelly_f = long_strat_returns.mean()/long_strat_returns.std()**2
+short_kelly_f = short_strat_returns.mean()/short_strat_returns.std()**2
+
+print("Long kelly " + str(long_kelly_f))
+print("Short kelly " + str(short_kelly_f))
+
 print("Average realized volatility " + str(realized_volatility.mean()))
 
 #print("   ")

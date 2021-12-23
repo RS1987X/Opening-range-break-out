@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 """
-Created on Wed Dec 22 10:54:33 2021
+Created on Thu Dec 23 12:14:20 2021
 
-@author: Richard
+@author: richa
 """
 
 
@@ -16,10 +16,10 @@ from datetime import datetime
 from dateutil import parser
 from statsmodels.graphics.tsaplots import plot_acf
 
-evo_data = pd.read_csv('OMXSTO_DLY_EVO, 15.csv')
+evo_data = pd.read_csv('OMXSTO_DLY_BOOZT, 15.csv')
 evo_data = evo_data['time;open;high;low;close;VWAP;Upper Band;Lower Band;Volume;Volume MA'].str.split(";",expand=True)
 evo_data = evo_data.rename(columns={0:"DateTime", 1:"Open", 2:"High", 3:"Low", 4:"Close", 5:"VWAP", 6:"Upper Band", 7:"Lower Band", 8:"Volume", 9:"Volume MA"})
-evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume"]]
+evo_data = evo_data[["DateTime","Open","High", "Low", "Close","Volume","VWAP"]]
 
 time_offset_removed =  evo_data["DateTime"].str[:-6]
 only_date_part = evo_data["DateTime"].str[:-15]
@@ -28,15 +28,10 @@ only_time_part = time_offset_removed.str[11:]
 evo_data.insert(1,"DatePart", only_date_part) 
 evo_data.insert(2,"TimePart", only_time_part)
 
-
 #calculate realized variance using 680 (15 min) observations, roughly 20 trading sessions
 returns = evo_data["Close"].astype(float).pct_change()**2
 realized_volatility = math.sqrt(252/20)*np.sqrt(returns.rolling(680).sum().astype(float)).to_frame()
-#evo_data["TimePart"]
 
-#DAY HIGH and DAY LOWS
-dh = evo_data.groupby('DatePart')["High"].max().to_frame()
-dl = evo_data.groupby('DatePart')["Low"].min().to_frame()
 
 #Closing prices for the trading session, full and half session
 full_day_dates = evo_data[evo_data["TimePart"] == "17:15:00"]["DatePart"].to_frame()
@@ -46,85 +41,55 @@ half_day_dates = all_dates.iloc[idx]["DatePart"].to_frame()
 half_days_data = evo_data[evo_data["DatePart"].isin(half_day_dates["DatePart"])]
 half_days_data["TimePart"] == "12:45:00"
 
-#EXIT PRICES for both half and full sessions
-exit_price_half_day = half_days_data[half_days_data["TimePart"] == "12:45:00"]["Close"]
-exit_price_full_days = evo_data[evo_data["TimePart"] == "17:15:00"]["Close"]
-exit_price = exit_price_full_days.append(exit_price_half_day)
+#close PRICES for both half and full sessions
+close_price_half_day = half_days_data[half_days_data["TimePart"] == "12:45:00"]["Close"]
+close_price_full_days = evo_data[evo_data["TimePart"] == "17:15:00"]["Close"]
+close_price = close_price_full_days.append(close_price_half_day)
 
-exit_price = exit_price.sort_index()
-exit_price = exit_price.to_frame().astype(float)
-exit_price.insert(1,"DatePart",only_date_part)
-exit_price = exit_price.set_index("DatePart")
+close_price = close_price.sort_index()
+close_price = close_price.to_frame().astype(float)
+close_price.insert(1,"DatePart",only_date_part)
+close_price = close_price.set_index("DatePart")
+
+#pre call PRICES for both half and full sessions
+precall_price_half_day = half_days_data[half_days_data["TimePart"] == "12:45:00"]["Open"]
+precall_price_full_days = evo_data[evo_data["TimePart"] == "17:15:00"]["Open"]
+precall_price = precall_price_full_days.append(precall_price_half_day)
+
+precall_price = precall_price.sort_index()
+precall_price = precall_price.to_frame().astype(float)
+precall_price.insert(1,"DatePart",only_date_part)
+precall_price = precall_price.set_index("DatePart")
 
 
-#OPEN BAR VOLUME
-opening_rng_volume = evo_data[evo_data["TimePart"] == "09:00:00"]["Volume"].to_frame()
-opening_rng_volume.insert(1,"DatePart",only_date_part)
-opening_rng_volume = opening_rng_volume.set_index("DatePart")
-
-#calculate rolling 20 session opening range volume
-avg_rolling_opening_volume = opening_rng_volume.rolling(20).mean().shift(1)
-
-
-#OPEN PRICES
-#open_price_half_day = half_days_data[half_days_data["TimePart"] == "09:00:00"]["Open"]
-open_price = evo_data[evo_data["TimePart"] == "09:00:00"]["Open"]
+#open PRICES for both half and full sessions
+#open_price_half_day = half_days_data[half_days_data["TimePart"] == "09:30:00"]["Open"]
+open_price = (evo_data[evo_data["TimePart"] == "09:00:00"]["Open"].astype(float) + evo_data[evo_data["TimePart"] == "09:00:00"]["Close"].astype(float))/2
 #open_price = open_price_full_days.append(open_price_half_day)
-
-#open_price =open_price.sort_index()
+open_price.columns = ["Open"]
+#open_price = open_price.sort_index()
 open_price = open_price.to_frame().astype(float)
 open_price.insert(1,"DatePart",only_date_part)
 open_price = open_price.set_index("DatePart")
-
-#LH (last half hour) prices in sweden that is 17:00
-LH_price_half_day = half_days_data[half_days_data["TimePart"] == "12:15:00"]["Close"]
-LH_price_full_days = evo_data[evo_data["TimePart"] == "16:45:00"]["Close"].astype(float) 
-LH_price = LH_price_full_days.append(LH_price_half_day)
-
-LH_price = LH_price.sort_index()
-LH_price = LH_price.to_frame().astype(float)
-LH_price.insert(1,"DatePart",only_date_part)
-LH_price = LH_price.set_index("DatePart")
-
-#LH_price.columns = ["Close"]
-
-#FH (first half hour) prices in sweden that is 09:30
-#FH_price_half_day = half_days_data[half_days_data["TimePart"] == "09:30:00"]["Close"]
-FH_price = evo_data[evo_data["TimePart"] == "09:30:00"]["Close"]
-#FH_price = FH_price_full_days.append(FH_price_half_day)
-
-#FH_price = FH_price.sort_index()
-FH_price = FH_price.to_frame().astype(float)
-FH_price.insert(1,"DatePart",only_date_part)
-FH_price = FH_price.set_index("DatePart")
-
-#overnight gap
-on_gap_return = open_price["Open"]/exit_price["Close"].shift(1)-1
-
-FH_ret = FH_price["Close"]/exit_price["Close"].shift(1)-1
-LH_ret = exit_price["Close"]/LH_price["Close"]-1
+open_price.columns = ["Open"]
 
 #calc returns
 comm = 0.0002
-slippage = 0.15/100
+slippage = 0.1/100
 
 #calculate volatility
-ret = exit_price["Close"]/exit_price["Close"].shift(1)-1
+ret = close_price["Close"]/close_price["Close"].shift(1)-1
 vol = ret.rolling(20).std()
 
-high_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) > 1*avg_rolling_opening_volume["Volume"]).to_frame()
-low_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) < 1*avg_rolling_opening_volume["Volume"]).to_frame()
-
-
 #beginning of day hedging leading to gap continuation first half hour, calculate returns
-long_pos_gap = (FH_ret < -0.03) & high_opening_rng_volume["Volume"]
-short_pos_gap = (FH_ret > 0.03) & high_opening_rng_volume["Volume"]
+long_pos = (close_price["Close"]-precall_price["Open"])/precall_price["Open"] < -0.015
+short_pos =(close_price["Close"]-precall_price["Open"])/precall_price["Open"] > 0.015
 
-FH_long_returns = exit_price["Close"]/LH_price["Close"]-1-comm*2-slippage
-FH_short_returns = LH_price["Close"]/ exit_price["Close"]-1-comm*2-slippage
+on_long_returns = open_price["Open"].shift(-1)/close_price["Close"]-1-comm*2-slippage
+on_short_returns = close_price["Close"]/open_price["Open"].shift(-1)-1-comm*2-slippage
 
-long_returns = FH_long_returns[long_pos_gap]
-short_returns = FH_short_returns[short_pos_gap]
+long_returns = on_long_returns[long_pos]
+short_returns = on_short_returns[short_pos]
 
 
 
@@ -145,8 +110,8 @@ short_returns = FH_short_returns[short_pos_gap]
 long_short_returns = pd.concat([long_returns, short_returns],axis=0)
 long_short_returns = long_short_returns.sort_index()
 
-print("avg return " + str(252*long_short_returns.mean()))
-print("volatility " + str(15.87*long_short_returns.std()))
+print("avg return " + str(long_short_returns.mean()))
+print("volatility " + str(long_short_returns.std()))
 
 kelly_f = long_short_returns.mean()/(long_short_returns.std()**2)
 print("kelly f " + str(kelly_f))
@@ -164,7 +129,7 @@ print("Total return " + str(total_return[0]))
 print("Number of trades " + str(len(long_short_returns)))
 
 
-long_kelly_f = long_returns.mean()/long_returns.std()**2
+long_kelly_f = long_returns.mean()/(long_returns.std()**2)
 short_kelly_f = short_returns.mean()/(short_returns.std()**2)
 
 print("Long kelly " + str(long_kelly_f))
@@ -172,11 +137,12 @@ print("Short kelly " + str(short_kelly_f))
 
 
 #underlying stats
-daily_returns = exit_price["Close"]/exit_price["Close"].shift(1)-1
+daily_returns = close_price["Close"]/close_price["Close"].shift(1)-1
 
-print("Underlying annual ret " + str(daily_returns.mean()*252))
-print("Underlying annual vol " + str(daily_returns.std()*15.87))
-print("Underlying kelly f " + str(daily_returns.mean()/(daily_returns.std()**2)))
+
+print("Stock overnight return " + str(on_long_returns.mean()))
+print("Stock overnight vol " + str(on_long_returns.std()))
+print("Stock overnight kelly f " + str(on_long_returns.mean()/(on_long_returns.std()**2)))
 
 #print("Average realized volatility " + str(realized_volatility.mean()))
 

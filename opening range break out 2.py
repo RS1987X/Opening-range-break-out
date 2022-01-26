@@ -9,13 +9,14 @@ import pandas as pd
 import math
 import numpy as np
 import matplotlib.pyplot as plt
+import matplotlib.dates as mdates
 from scipy import stats
 from datetime import date
 from datetime import datetime
 from dateutil import parser
 from statsmodels.graphics.tsaplots import plot_acf
 
-data = pd.read_csv('OMXSTO_DLY_LIFCO_B, 15.csv')
+data = pd.read_csv('OMXSTO_DLY_SECU_B, 15.csv')
 #evo_data = pd.read_csv('OMXSTO_DLY_INDT, 15.csv')
 
 time_offset_removed =  data["time"].str[:-6]
@@ -100,8 +101,9 @@ low_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) < 1*avg_rol
 dl_below_opening_low = (dl < opening_rng_low)
 high_opening_rng_volume = (opening_rng_volume["Volume"].astype(float) > 1.5*avg_rolling_opening_volume["Volume"]).to_frame()
 
-pos_ind = (dh_above_opening_high["high"]) & (opening_rng_pct < 0.02) & (opening_gap > 0.0)  & (low_opening_rng_volume["Volume"])
 short_pos_ind = (dl_below_opening_low["low"]) & (opening_gap < 0.0) & (high_opening_rng_volume["Volume"]) & (opening_rng_pct < 0.02)
+pos_ind = (dh_above_opening_high["high"]) & (opening_rng_pct < 0.02) & (opening_gap > 0.0)  & (low_opening_rng_volume["Volume"])
+
 
 long_entry_price = opening_rng_high[pos_ind].astype(float)
 short_entry_price = opening_rng_low[short_pos_ind].astype(float)
@@ -118,8 +120,8 @@ short_exit_price = exit_price[short_pos_ind].astype(float)
 #calculate reutrns
 comm = 0.0002
 slippage = 0.25/100
-long_strat_returns = long_exit_price["close"]/long_entry_price["high"]-1-comm*2-slippage
-short_strat_returns = short_entry_price["low"]/short_exit_price["close"]-1-comm*2-slippage
+long_strat_returns = long_exit_price["close"]/long_entry_price["high"]-1-pos_ind*comm*2-pos_ind*2*slippage
+short_strat_returns = short_entry_price["low"]/short_exit_price["close"]-1-short_pos_ind*2*comm*2-short_pos_ind*2*slippage
 
 long_short_returns =short_strat_returns #pd.concat([long_strat_returns, short_strat_returns],axis=0) #
 long_short_returns = long_short_returns.sort_index()
